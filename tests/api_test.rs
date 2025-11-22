@@ -1,17 +1,17 @@
 use actix::Actor;
-use actix_web::{test, web, App};
+use actix_web::{App, test, web};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 use webscoket_realtime_prac::game::manager::GameManager;
-use webscoket_realtime_prac::handlers::{create_matching, join_matching, MatchingSessions};
+use webscoket_realtime_prac::handlers::{MatchingSessions, create_matching, join_matching};
 use webscoket_realtime_prac::models::{CreateMatchingResponse, JoinMatchingResponse};
 
 #[actix_web::test]
 async fn test_create_matching() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let app = test::init_service(
         App::new()
@@ -39,7 +39,7 @@ async fn test_create_matching() {
 #[actix_web::test]
 async fn test_join_matching_success() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let app = test::init_service(
         App::new()
@@ -81,7 +81,7 @@ async fn test_join_matching_success() {
 #[actix_web::test]
 async fn test_join_matching_not_found() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let app = test::init_service(
         App::new()

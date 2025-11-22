@@ -44,7 +44,7 @@ async fn main() -> std::io::Result<()> {
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
 
     // ゲームマネージャーアクター起動
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     println!("✅ Server initialized");
     println!("🌐 Listening on http://0.0.0.0:8080");

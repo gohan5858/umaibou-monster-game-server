@@ -653,11 +653,26 @@ impl Actor for WsSession {
         // WsChannelsから自分を削除
         if let (Some(matching_id), Some(player_id)) = (self.matching_id, &self.player_id) {
             let mut channels = self.ws_channels.lock().unwrap();
+            let mut is_empty = false;
             if let Some(player_map) = channels.get_mut(&matching_id) {
                 player_map.remove(player_id);
                 // マッチングIDに対応するエントリが空になったら、そのエントリ自体を削除
                 if player_map.is_empty() {
                     channels.remove(&matching_id);
+                    is_empty = true;
+                }
+            }
+            drop(channels);
+
+            // 誰もいなくなったら last_active_at を設定
+            if is_empty {
+                let mut sessions = self.sessions.lock().unwrap();
+                if let Some(session) = sessions.get_mut(&matching_id) {
+                    println!(
+                        "⚠️ All players disconnected from matching {}, starting 60s timer",
+                        matching_id
+                    );
+                    session.last_active_at = Some(chrono::Utc::now());
                 }
             }
         }
@@ -779,6 +794,27 @@ pub async fn ws_handler(
         println!("🎯 matching_id={}", matching_id);
         if let Ok(id) = Uuid::parse_str(matching_id) {
             ws_session.matching_id = Some(id);
+
+            // セッションの有効性チェックと last_active_at のクリア
+            {
+                let mut sessions = sessions.lock().unwrap();
+                if let Some(session) = sessions.get_mut(&id) {
+                    if !session.is_valid() {
+                        println!("❌ Matching session {} is expired", id);
+                        return Err(actix_web::error::ErrorBadRequest(
+                            "Matching session is expired",
+                        ));
+                    }
+                    // 誰かが接続したらタイマー解除
+                    if session.last_active_at.is_some() {
+                        println!(
+                            "✅ Player connected to matching {}, clearing expiration timer",
+                            id
+                        );
+                        session.last_active_at = None;
+                    }
+                }
+            }
 
             // WsChannelsに登録
             if let Some(player_id) = &ws_session.player_id {

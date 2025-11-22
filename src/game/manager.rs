@@ -1,4 +1,5 @@
 use crate::game::state::GameStateManager;
+use crate::handlers::MatchingSessions;
 use crate::models::{GameResult, WsMessage};
 use actix::prelude::*;
 use chrono::Utc;
@@ -15,13 +16,16 @@ pub struct GameManager {
     games: HashMap<Uuid, GameStateManager>,
     /// WebSocket送信用チャンネル (matching_id -> (player_id -> sender))
     ws_senders: HashMap<Uuid, HashMap<String, mpsc::UnboundedSender<WsMessage>>>,
+    /// 共有マッチングセッション
+    sessions: MatchingSessions,
 }
 
 impl GameManager {
-    pub fn new() -> Self {
+    pub fn new(sessions: MatchingSessions) -> Self {
         Self {
             games: HashMap::new(),
             ws_senders: HashMap::new(),
+            sessions,
         }
     }
 
@@ -128,9 +132,44 @@ impl Actor for GameManager {
                             };
 
                             act.broadcast_game_end(&matching_id, result);
+
+                            // セッションのバトル終了フラグを更新
+                            if let Ok(mut sessions) = act.sessions.lock() {
+                                if let Some(session) = sessions.get_mut(&matching_id) {
+                                    session.is_battle_finished = true;
+                                    println!("🏁 Battle finished for matching: {}", matching_id);
+                                }
+                            }
                         }
                     }
                     // 状態送信は削除（更新時のみ送信するように変更）
+                }
+            }
+        });
+
+        // 1秒ごとに無効なセッションをクリーンアップ
+        ctx.run_interval(Duration::from_secs(1), |act, _ctx| {
+            let mut sessions_to_remove = Vec::new();
+
+            // ロックして無効なセッションを特定
+            if let Ok(mut sessions) = act.sessions.lock() {
+                let keys: Vec<Uuid> = sessions.keys().cloned().collect();
+                for id in keys {
+                    if let Some(session) = sessions.get(&id) {
+                        if !session.is_valid() {
+                            sessions_to_remove.push(id);
+                        }
+                    }
+                }
+
+                // 無効なセッションを削除
+                for id in sessions_to_remove {
+                    println!("🗑️ Removing expired matching session: {}", id);
+                    sessions.remove(&id);
+
+                    // ゲームマネージャーからも削除
+                    act.games.remove(&id);
+                    act.ws_senders.remove(&id);
                 }
             }
         });

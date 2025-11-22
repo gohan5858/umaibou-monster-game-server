@@ -37,7 +37,7 @@ async fn test_websocket_connection() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let srv = actix_test::start(move || {
         App::new()
@@ -94,7 +94,7 @@ async fn test_ready_with_model_message() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let srv = actix_test::start(move || {
         App::new()
@@ -140,7 +140,7 @@ async fn test_input_move_message() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     let srv = actix_test::start(move || {
         App::new()
@@ -192,7 +192,7 @@ async fn test_opponent_gets_character_selection_message() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     // マッチングセッションを手動で作成
     let matching_id = Uuid::new_v4();
@@ -203,8 +203,11 @@ async fn test_opponent_gets_character_selection_message() {
         matching_id,
         player_a: Player::new(player_a_id.clone()),
         player_b: Some(Player::new(player_b_id.clone())),
-        status: MatchingStatus::Matched,
+        status: MatchingStatus::Waiting,
         created_at: Utc::now(),
+        last_active_at: None,
+        is_battle_started: false,
+        is_battle_finished: false,
     };
     matching_sessions
         .lock()

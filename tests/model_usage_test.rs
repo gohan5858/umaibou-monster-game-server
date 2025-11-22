@@ -22,7 +22,7 @@ async fn test_model_one_time_use() {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
-    let game_manager = GameManager::new().start();
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
 
     // 1. Manually insert a model into the DB (simulating upload)
     // We do this because multipart upload in test is verbose

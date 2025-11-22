@@ -1,6 +1,6 @@
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
 
 // 3Dベクトル（位置・方向）
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,18 +16,22 @@ impl Vector3 {
     }
 
     pub fn zero() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }
     }
 }
 
 // 3Dモデルキャラクター情報
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Character {
-    pub model_id: String,          // 3Dモデル識別子
-    pub position: Vector3,         // 位置
-    pub rotation: Vector3,         // 向き（オイラー角）
-    pub hp: i32,                   // HP
-    pub max_hp: i32,               // 最大HP
+    pub model_id: String,  // 3Dモデル識別子
+    pub position: Vector3, // 位置
+    pub rotation: Vector3, // 向き（オイラー角）
+    pub hp: i32,           // HP
+    pub max_hp: i32,       // 最大HP
 }
 
 impl Character {
@@ -49,10 +53,10 @@ impl Character {
 // プレイヤー情報
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Player {
-    pub id: String,                // プレイヤーID
+    pub id: String,                        // プレイヤーID
     pub selected_model_id: Option<String>, // マッチング作成/参加時に選択したモデルID
-    pub character: Option<Character>, // 選択したキャラクター
-    pub ready: bool,               // 準備完了フラグ
+    pub character: Option<Character>,      // 選択したキャラクター
+    pub ready: bool,                       // 準備完了フラグ
 }
 
 impl Player {
@@ -78,11 +82,11 @@ impl Player {
 // マッチングセッション状態
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum MatchingStatus {
-    Waiting,      // マッチング待ち
-    Matched,      // マッチング成立
-    Preparing,    // 準備中
-    InGame,       // ゲーム中
-    Finished,     // 終了
+    Waiting,   // マッチング待ち
+    Matched,   // マッチング成立
+    Preparing, // 準備中
+    InGame,    // ゲーム中
+    Finished,  // 終了
 }
 
 // マッチングセッション
@@ -93,6 +97,9 @@ pub struct MatchingSession {
     pub player_b: Option<Player>,
     pub status: MatchingStatus,
     pub created_at: DateTime<Utc>,
+    pub last_active_at: Option<DateTime<Utc>>, // 最後のプレイヤーが切断した時刻
+    pub is_battle_started: bool,               // バトル開始済みフラグ
+    pub is_battle_finished: bool,              // バトル終了済みフラグ
 }
 
 impl MatchingSession {
@@ -103,6 +110,9 @@ impl MatchingSession {
             player_b: None,
             status: MatchingStatus::Waiting,
             created_at: Utc::now(),
+            last_active_at: None,
+            is_battle_started: false,
+            is_battle_finished: false,
         }
     }
 
@@ -113,11 +123,33 @@ impl MatchingSession {
             player_b: None,
             status: MatchingStatus::Waiting,
             created_at: Utc::now(),
+            last_active_at: None,
+            is_battle_started: false,
+            is_battle_finished: false,
         }
     }
 
     pub fn is_both_ready(&self) -> bool {
         self.player_a.ready && self.player_b.as_ref().map_or(false, |p| p.ready)
+    }
+
+    /// マッチングが有効かどうか判定
+    /// - バトル終了後は無効
+    /// - 両方切断してから60秒経過したら無効
+    pub fn is_valid(&self) -> bool {
+        if self.is_battle_finished {
+            return false;
+        }
+
+        if let Some(last_active) = self.last_active_at {
+            let now = Utc::now();
+            let duration = now.signed_duration_since(last_active);
+            if duration.num_seconds() > 60 {
+                return false;
+            }
+        }
+
+        true
     }
 }
 
@@ -163,20 +195,32 @@ pub struct GameResult {
 #[serde(tag = "type", content = "data")]
 pub enum WsMessage {
     // クライアント→サーバー
-    CreateMatching { selected_model_id: String },  // マッチング作成要求
-    JoinMatch { matching_id: Uuid, selected_model_id: String },  // マッチング参加要求
-    Ready { selected_model_id: String },
-    Input { action: InputAction },
-    StateUpdate { position: Vector3, rotation: Vector3 },
+    CreateMatching {
+        selected_model_id: String,
+    }, // マッチング作成要求
+    JoinMatch {
+        matching_id: Uuid,
+        selected_model_id: String,
+    }, // マッチング参加要求
+    Ready {
+        selected_model_id: String,
+    },
+    Input {
+        action: InputAction,
+    },
+    StateUpdate {
+        position: Vector3,
+        rotation: Vector3,
+    },
 
     // サーバー→クライアント
     MatchingCreated {
         matching_id: Uuid,
-        current_matchings: Vec<Uuid>,  // 自分以外のマッチング一覧
+        current_matchings: Vec<Uuid>, // 自分以外のマッチング一覧
         timestamp: DateTime<Utc>,
     },
     UpdateMatchings {
-        current_matchings: Vec<Uuid>,  // 現在のマッチング一覧
+        current_matchings: Vec<Uuid>, // 現在のマッチング一覧
         timestamp: DateTime<Utc>,
     },
     MatchingEstablished {
@@ -195,13 +239,13 @@ pub enum WsMessage {
         timestamp: DateTime<Utc>,
     },
     GameStart {
-        opponent_character: Character,  // 相手のキャラクター情報のみ
-        your_player_id: String,         // 自分のプレイヤーID（識別用）
+        opponent_character: Character, // 相手のキャラクター情報のみ
+        your_player_id: String,        // 自分のプレイヤーID（識別用）
         timestamp: DateTime<Utc>,
     },
     OpponentStateUpdate {
         opponent: Character,
-        timestamp: DateTime<Utc>,  // サーバー送信時刻（レイテンシ計測用）
+        timestamp: DateTime<Utc>, // サーバー送信時刻（レイテンシ計測用）
     },
     GameEnd {
         result: GameResult,
@@ -209,7 +253,9 @@ pub enum WsMessage {
     },
 
     // エラー
-    Error { message: String },
+    Error {
+        message: String,
+    },
 }
 
 // REST APIリクエスト/レスポンス
