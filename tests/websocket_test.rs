@@ -297,3 +297,107 @@ async fn test_opponent_gets_character_selection_message() {
         panic!("No message received for player B");
     }
 }
+
+#[actix_rt::test]
+async fn test_input_melee_attack_message() {
+    let db_pool = create_test_db_pool().await;
+    let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
+    let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
+    let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
+
+    let srv = actix_test::start(move || {
+        App::new()
+            .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(matching_sessions.clone()))
+            .app_data(web::Data::new(ws_channels.clone()))
+            .app_data(web::Data::new(waiting_players.clone()))
+            .app_data(web::Data::new(game_manager.clone()))
+            .route("/ws", web::get().to(ws_handler))
+    });
+
+    let matching_id = Uuid::new_v4();
+    let ws_url = format!(
+        "ws://127.0.0.1:{}/ws?player_id=player_a&matching_id={}",
+        srv.addr().port(),
+        matching_id
+    );
+
+    let (ws_stream, _) = connect_async(&ws_url).await.unwrap();
+    let (mut write, _read) = ws_stream.split();
+
+    // 近距離攻撃入力メッセージ送信
+    let attack_msg = json!({
+        "type": "Input",
+        "data": {
+            "action": {
+                "Attack": {
+                    "attack_type": "Melee",
+                    "position": {"x": 10.0, "y": 0.0, "z": 5.0},
+                    "direction": {"x": 1.0, "y": 0.0, "z": 0.0}
+                }
+            }
+        }
+    });
+
+    let send_result = write
+        .send(Message::Text(attack_msg.to_string().into()))
+        .await;
+    assert!(
+        send_result.is_ok(),
+        "Failed to send Melee attack input: {:?}",
+        send_result
+    );
+}
+
+#[actix_rt::test]
+async fn test_input_ranged_attack_message() {
+    let db_pool = create_test_db_pool().await;
+    let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
+    let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
+    let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
+    let game_manager = GameManager::new(matching_sessions.clone()).start();
+
+    let srv = actix_test::start(move || {
+        App::new()
+            .app_data(web::Data::new(db_pool.clone()))
+            .app_data(web::Data::new(matching_sessions.clone()))
+            .app_data(web::Data::new(ws_channels.clone()))
+            .app_data(web::Data::new(waiting_players.clone()))
+            .app_data(web::Data::new(game_manager.clone()))
+            .route("/ws", web::get().to(ws_handler))
+    });
+
+    let matching_id = Uuid::new_v4();
+    let ws_url = format!(
+        "ws://127.0.0.1:{}/ws?player_id=player_a&matching_id={}",
+        srv.addr().port(),
+        matching_id
+    );
+
+    let (ws_stream, _) = connect_async(&ws_url).await.unwrap();
+    let (mut write, _read) = ws_stream.split();
+
+    // 遠距離攻撃入力メッセージ送信
+    let attack_msg = json!({
+        "type": "Input",
+        "data": {
+            "action": {
+                "Attack": {
+                    "attack_type": "Ranged",
+                    "position": {"x": 15.0, "y": 2.0, "z": 8.0},
+                    "direction": {"x": 0.0, "y": 0.0, "z": 1.0}
+                }
+            }
+        }
+    });
+
+    let send_result = write
+        .send(Message::Text(attack_msg.to_string().into()))
+        .await;
+    assert!(
+        send_result.is_ok(),
+        "Failed to send Ranged attack input: {:?}",
+        send_result
+    );
+}

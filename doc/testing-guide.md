@@ -450,18 +450,44 @@ wscat -c "ws://localhost:8080/ws"
 
 #### 8. 攻撃入力テスト
 
+**近距離攻撃:**
+
 ```json
 {
   "type": "Input",
   "data": {
     "action": {
       "Attack": {
-        "target_position": {"x": 10.0, "y": 0.0, "z": 5.0}
+        "attack_type": "Melee",
+        "position": {"x": 10.0, "y": 0.0, "z": 5.0},
+        "direction": {"x": 1.0, "y": 0.0, "z": 0.0}
       }
     }
   }
 }
 ```
+
+**遠距離攻撃:**
+
+```json
+{
+  "type": "Input",
+  "data": {
+    "action": {
+      "Attack": {
+        "attack_type": "Ranged",
+        "position": {"x": 15.0, "y": 2.0, "z": 8.0},
+        "direction": {"x": 0.0, "y": 0.0, "z": 1.0}
+      }
+    }
+  }
+}
+```
+
+**パラメータ:**
+- `attack_type`: 攻撃種別（`"Melee"`: 近距離、`"Ranged"`: 遠距離）
+- `position`: 攻撃を行った位置（3Dベクトル）
+- `direction`: 攻撃の方向（3Dベクトル）
 
 ---
 

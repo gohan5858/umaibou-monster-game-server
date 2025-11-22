@@ -159,11 +159,22 @@ impl MatchingSession {
     }
 }
 
+// 攻撃種別
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum AttackType {
+    Melee,  // 近距離攻撃
+    Ranged, // 遠距離攻撃
+}
+
 // 操作入力種別
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputAction {
     Move { direction: Vector3, speed: f32 },
-    Attack { target_position: Vector3 },
+    Attack {
+        attack_type: AttackType,
+        position: Vector3,  // 攻撃を行った位置
+        direction: Vector3, // 攻撃の方向
+    },
     Rotate { rotation: Vector3 },
 }
 

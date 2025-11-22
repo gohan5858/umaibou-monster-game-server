@@ -471,7 +471,7 @@ fn send_opponent_state_for_player(&self, matching_id: &Uuid, player_id: &str) {
 }
 ```
 
-または
+または攻撃入力（近距離攻撃）:
 
 ```json
 {
@@ -479,12 +479,36 @@ fn send_opponent_state_for_player(&self, matching_id: &Uuid, player_id: &str) {
   "data": {
     "action": {
       "Attack": {
-        "target_position": {"x": 15.0, "y": 0.0, "z": 10.0}
+        "attack_type": "Melee",
+        "position": {"x": 10.0, "y": 0.0, "z": 5.0},
+        "direction": {"x": 1.0, "y": 0.0, "z": 0.0}
       }
     }
   }
 }
 ```
+
+または攻撃入力（遠距離攻撃）:
+
+```json
+{
+  "type": "Input",
+  "data": {
+    "action": {
+      "Attack": {
+        "attack_type": "Ranged",
+        "position": {"x": 15.0, "y": 2.0, "z": 8.0},
+        "direction": {"x": 0.0, "y": 0.0, "z": 1.0}
+      }
+    }
+  }
+}
+```
+
+**攻撃入力のパラメータ:**
+- `attack_type`: 攻撃種別（`"Melee"`: 近距離、`"Ranged"`: 遠距離）
+- `position`: 攻撃を行った位置（3Dベクトル）
+- `direction`: 攻撃の方向（3Dベクトル）
 
 **サーバー側の処理:**
 
