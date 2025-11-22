@@ -27,7 +27,19 @@ jobs:
 
       - name: Build release binary
         run: |
-          cargo build --release --bin umaibou-monster-game-server
+          # musl-toolsのインストール
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+          # muslターゲットの追加
+          rustup target add x86_64-unknown-linux-musl
+
+          # musl向けにビルド
+          cargo build --release --target x86_64-unknown-linux-musl --bin umaibou-monster-game-server
+
+          # deploy.shが期待する場所にバイナリを移動
+          mkdir -p target/release
+          cp target/x86_64-unknown-linux-musl/release/umaibou-monster-game-server target/release/
           chmod +x target/release/umaibou-monster-game-server
 
       - name: Install cloudflared
