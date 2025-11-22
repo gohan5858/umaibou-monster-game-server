@@ -27,19 +27,31 @@ jobs:
       - name: Check if merge from release branch
         id: check
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
-          echo "Commit message: $COMMIT_MSG"
-
+          # Detect if this push is a merge of a release/* branch into main
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "should_deploy=true" >> $GITHUB_OUTPUT
             echo "Manual deployment triggered"
-          elif echo "$COMMIT_MSG" | grep -qE "Merge.*release"; then
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
-            echo "Release branch merged, will deploy"
-          else
-            echo "should_deploy=false" >> $GITHUB_OUTPUT
-            echo "Not a release merge, skipping deployment"
+            exit 0
           fi
+
+          # When a PR is merged, GitHub provides pull_request info
+          if [ "${{ github.event_name }}" = "push" ] && echo "$GITHUB_REF" | grep -q "refs/heads/main"; then
+            # Check if the commit is a merge commit and the merged branch is a release branch
+            MERGED_BRANCH=$(git log -1 --pretty=%P | wc -l)
+            if [ "$MERGED_BRANCH" -gt 1 ]; then
+              # Get the second parent (the merged branch) name
+              PARENT_SHA=$(git rev-parse HEAD^2)
+              PARENT_BRANCH=$(git branch -r --contains $PARENT_SHA | grep "origin/release/" | head -n1 | sed 's#origin/##')
+              if echo "$PARENT_BRANCH" | grep -q "^release/"; then
+                echo "should_deploy=true" >> $GITHUB_OUTPUT
+                echo "Release branch $PARENT_BRANCH merged, will deploy"
+                exit 0
+              fi
+            fi
+          fi
+
+          echo "should_deploy=false" >> $GITHUB_OUTPUT
+          echo "Not a release merge, skipping deployment"
 
   deploy:
     needs: check-release
