@@ -20,9 +20,8 @@ echo -e "${GREEN}========================================${NC}"
 # デプロイ先の設定
 # SSH config aliasを使用
 REMOTE_TARGET="umamon"
-REMOTE_BASE_DIR="/home/${DEPLOY_USER}/${DEPLOY_PATH}"
-REMOTE_APP_DIR="${REMOTE_BASE_DIR}/umaibou-monster-game-server"
-BACKUP_DIR="${REMOTE_BASE_DIR}/umaibou-monster-game-server.backup"
+REMOTE_APP_DIR="/home/${DEPLOY_USER}/${DEPLOY_PATH}"
+BACKUP_DIR="${REMOTE_APP_DIR}_backup"
 
 # 1. リモートサーバーでディレクトリ準備
 echo -e "${YELLOW}Step 1: Preparing remote directory...${NC}"
