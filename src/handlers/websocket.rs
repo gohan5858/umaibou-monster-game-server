@@ -1,7 +1,7 @@
 use crate::db::models::Model3D;
 use crate::game::manager::{GameManager, ProcessInput, StartGame};
 use crate::game::state::GameStateManager;
-use crate::handlers::{MatchingSessions, WaitingPlayers, WsChannels};
+use crate::handlers::{LobbyPlayers, MatchingSessions, WaitingPlayers, WsChannels};
 use crate::models::{MatchingStatus, WsMessage};
 use actix::prelude::*;
 use actix_web::{Error, HttpRequest, HttpResponse, web};
@@ -25,6 +25,8 @@ pub struct WsSession {
     ws_channels: WsChannels,
     /// マッチング待ちプレイヤー管理
     waiting_players: WaitingPlayers,
+    /// ロビー待機プレイヤー管理
+    lobby_players: LobbyPlayers,
     /// ゲームマネージャーアドレス
     game_manager: Addr<GameManager>,
     /// データベースプール
@@ -33,6 +35,8 @@ pub struct WsSession {
     rx: Option<mpsc::UnboundedReceiver<WsMessage>>,
     /// メッセージ送信チャンネル
     tx: mpsc::UnboundedSender<WsMessage>,
+    /// セッションID (再接続時の競合防止用)
+    session_id: Uuid,
 }
 
 impl WsSession {
@@ -40,6 +44,7 @@ impl WsSession {
         sessions: MatchingSessions,
         ws_channels: WsChannels,
         waiting_players: WaitingPlayers,
+        lobby_players: LobbyPlayers,
         game_manager: Addr<GameManager>,
         db_pool: SqlitePool,
     ) -> Self {
@@ -51,10 +56,12 @@ impl WsSession {
             sessions,
             ws_channels,
             waiting_players,
+            lobby_players,
             game_manager,
             db_pool,
             rx: Some(rx),
             tx,
+            session_id: Uuid::new_v4(),
         }
     }
 
@@ -105,6 +112,7 @@ impl WsSession {
         let player_id_clone = player_id.clone();
         let sessions = self.sessions.clone();
         let waiting_players = self.waiting_players.clone();
+        let lobby_players = self.lobby_players.clone();
         let tx = self.tx.clone();
 
         // マッチングセッションを作成
@@ -122,14 +130,22 @@ impl WsSession {
 
         // マッチング待ちリストに追加
         let mut waiting_players_lock = waiting_players.lock().unwrap();
-        waiting_players_lock.insert(player_id_clone.clone(), (matching_id, tx.clone()));
+        waiting_players_lock.insert(
+            player_id_clone.clone(),
+            (matching_id, tx.clone(), self.session_id),
+        );
+
+        // ロビー待機リストから削除
+        let mut lobby_players_lock = lobby_players.lock().unwrap();
+        lobby_players_lock.remove(&player_id_clone);
+        drop(lobby_players_lock);
 
         // 自分以外のマッチング一覧を取得（詳細情報付き）
         let sessions_lock = sessions.lock().unwrap();
         let current_matchings: Vec<crate::models::MatchingInfo> = waiting_players_lock
             .iter()
             .filter(|(pid, _)| *pid != &player_id_clone)
-            .filter_map(|(_, (mid, _))| {
+            .filter_map(|(_, (mid, _, _))| {
                 sessions_lock
                     .get(mid)
                     .map(|session| crate::models::MatchingInfo {
@@ -164,6 +180,7 @@ impl WsSession {
     /// UpdateMatchingsをブロードキャスト
     fn broadcast_update_matchings(&self) {
         let waiting_players = self.waiting_players.lock().unwrap();
+        let lobby_players = self.lobby_players.lock().unwrap();
         let sessions = self.sessions.lock().unwrap();
 
         println!(
@@ -171,12 +188,12 @@ impl WsSession {
             waiting_players.len()
         );
 
-        for (player_id, (_, sender)) in waiting_players.iter() {
+        for (player_id, (_, sender, _)) in waiting_players.iter() {
             // 自分以外のマッチング一覧（詳細情報付き）
             let filtered_matchings: Vec<crate::models::MatchingInfo> = waiting_players
                 .iter()
                 .filter(|(pid, _)| *pid != player_id)
-                .filter_map(|(_, (mid, _))| {
+                .filter_map(|(_, (mid, _, _))| {
                     sessions
                         .get(mid)
                         .map(|session| crate::models::MatchingInfo {
@@ -190,6 +207,30 @@ impl WsSession {
 
             let msg = WsMessage::UpdateMatchings {
                 current_matchings: filtered_matchings,
+                timestamp: chrono::Utc::now(),
+            };
+            let _ = sender.send(msg);
+        }
+
+        // ロビー待機プレイヤーにも送信
+        for (_, (sender, _)) in lobby_players.iter() {
+            // 全てのマッチング一覧（詳細情報付き）
+            let all_matchings: Vec<crate::models::MatchingInfo> = waiting_players
+                .iter()
+                .filter_map(|(_, (mid, _, _))| {
+                    sessions
+                        .get(mid)
+                        .map(|session| crate::models::MatchingInfo {
+                            matching_id: *mid,
+                            creator_username: session.creator_username.clone(),
+                            created_at: session.created_at,
+                            status: session.status.clone(),
+                        })
+                })
+                .collect();
+
+            let msg = WsMessage::UpdateMatchings {
+                current_matchings: all_matchings,
                 timestamp: chrono::Utc::now(),
             };
             let _ = sender.send(msg);
@@ -213,6 +254,7 @@ impl WsSession {
         let player_id_clone = player_id.clone();
         let sessions = self.sessions.clone();
         let waiting_players = self.waiting_players.clone();
+        let lobby_players = self.lobby_players.clone();
         let ws_channels = self.ws_channels.clone();
         let tx = self.tx.clone();
 
@@ -270,6 +312,11 @@ impl WsSession {
         waiting_players_lock.remove(&player_id_clone);
         drop(waiting_players_lock);
 
+        // ロビー待機リストから削除
+        let mut lobby_players_lock = lobby_players.lock().unwrap();
+        lobby_players_lock.remove(&player_id_clone);
+        drop(lobby_players_lock);
+
         // WsChannelsに両者を登録
         let mut channels = ws_channels.lock().unwrap();
         let player_map = channels.entry(matching_id).or_default();
@@ -280,7 +327,7 @@ impl WsSession {
                 "✅ Registering player_a sender from waiting_players: {}",
                 player_a_id
             );
-            player_map.insert(player_a_id.clone(), sender.1);
+            player_map.insert(player_a_id.clone(), (sender.1, sender.2));
         } else {
             // waiting_playersにいない場合は、既にws_channelsに接続している可能性
             println!("⚠️ player_a not found in waiting_players: {}", player_a_id);
@@ -292,7 +339,7 @@ impl WsSession {
 
         // プレイヤーBのsenderを登録
         println!("✅ Registering player_b sender: {}", player_id_clone);
-        player_map.insert(player_id_clone.clone(), tx.clone());
+        player_map.insert(player_id_clone.clone(), (tx.clone(), self.session_id));
         drop(channels);
 
         // 両者にMatchingEstablishedを送信（モデルデータはまだNone）
@@ -304,7 +351,7 @@ impl WsSession {
             );
 
             // プレイヤーAに送信
-            if let Some(sender_a) = player_map.get(&player_a_id) {
+            if let Some((sender_a, _)) = player_map.get(&player_a_id) {
                 let msg = crate::models::WsMessage::MatchingEstablished {
                     matching_id,
                     opponent_id: player_id_clone.clone(),
@@ -321,7 +368,7 @@ impl WsSession {
             }
 
             // プレイヤーBに送信
-            if let Some(sender_b) = player_map.get(&player_id_clone) {
+            if let Some((sender_b, _)) = player_map.get(&player_id_clone) {
                 let msg = crate::models::WsMessage::MatchingEstablished {
                     matching_id,
                     opponent_id: player_a_id.clone(),
@@ -433,7 +480,8 @@ impl WsSession {
                                 };
                                 let channels = ws_channels.lock().unwrap();
                                 if let Some(player_map) = channels.get(&matching_id_clone) {
-                                    if let Some(opponent_sender) = player_map.get(&opponent_id) {
+                                    if let Some((opponent_sender, _)) = player_map.get(&opponent_id)
+                                    {
                                         println!(
                                             "✅ Sending OpponentCharacterSelected to opponent: {}",
                                             opponent_id
@@ -503,11 +551,36 @@ impl WsSession {
                                 let player_b_id = session.player_b.as_ref().unwrap().id.clone();
                                 drop(sessions_lock); // ロック解除
 
+                                // GameStartメッセージ送信
+                                let channels = ws_channels.lock().unwrap();
+                                if let Some(player_map) = channels.get(&matching_id_clone) {
+                                    // Player A
+                                    if let Some((sender_a, _)) = player_map.get(&player_a_id) {
+                                        let msg = WsMessage::GameStart {
+                                            opponent_character: player_b_char.clone(),
+                                            your_player_id: player_a_id.clone(),
+                                            timestamp: chrono::Utc::now(),
+                                        };
+                                        let _ = sender_a.send(msg);
+                                    }
+                                    // Player B
+                                    if let Some((sender_b, _)) = player_map.get(&player_b_id) {
+                                        let msg = WsMessage::GameStart {
+                                            opponent_character: player_a_char.clone(),
+                                            your_player_id: player_b_id.clone(),
+                                            timestamp: chrono::Utc::now(),
+                                        };
+                                        let _ = sender_b.send(msg);
+                                    }
+                                }
+
                                 // ゲームマネージャーに開始を通知
                                 let channels = ws_channels.lock().unwrap();
                                 let ws_senders = channels
                                     .get(&matching_id_clone)
-                                    .cloned()
+                                    .map(|map| {
+                                        map.iter().map(|(k, v)| (k.clone(), v.0.clone())).collect()
+                                    })
                                     .unwrap_or_default();
 
                                 // self.game_manager.do_send(StartGame { game, ws_senders }); // This line needs to be handled by the actor itself, not from within the spawned future.
@@ -659,13 +732,38 @@ impl Actor for WsSession {
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         // マッチング待ちリストから自分を削除
+        // マッチング待ちリストから自分を削除
         if let Some(player_id) = &self.player_id {
             let mut waiting_players = self.waiting_players.lock().unwrap();
-            waiting_players.remove(player_id);
+            let should_remove = if let Some((_, _, sid)) = waiting_players.get(player_id) {
+                *sid == self.session_id
+            } else {
+                false
+            };
+
+            if should_remove {
+                waiting_players.remove(player_id);
+            }
             drop(waiting_players);
 
-            // 他の待機中プレイヤーにUpdateMatchingsを送信
-            self.broadcast_update_matchings();
+            if should_remove {
+                // 他の待機中プレイヤーにUpdateMatchingsを送信
+                self.broadcast_update_matchings();
+            }
+        }
+
+        // ロビー待機リストから自分を削除
+        if let Some(player_id) = &self.player_id {
+            let mut lobby_players = self.lobby_players.lock().unwrap();
+            let should_remove = if let Some((_, sid)) = lobby_players.get(player_id) {
+                *sid == self.session_id
+            } else {
+                false
+            };
+
+            if should_remove {
+                lobby_players.remove(player_id);
+            }
         }
 
         // WsChannelsから自分を削除
@@ -673,7 +771,15 @@ impl Actor for WsSession {
             let mut channels = self.ws_channels.lock().unwrap();
             let mut is_empty = false;
             if let Some(player_map) = channels.get_mut(&matching_id) {
-                player_map.remove(player_id);
+                let should_remove = if let Some((_, sid)) = player_map.get(player_id) {
+                    *sid == self.session_id
+                } else {
+                    false
+                };
+
+                if should_remove {
+                    player_map.remove(player_id);
+                }
                 // マッチングIDに対応するエントリが空になったら、そのエントリ自体を削除
                 if player_map.is_empty() {
                     channels.remove(&matching_id);
@@ -776,6 +882,7 @@ pub async fn ws_handler(
     sessions: web::Data<MatchingSessions>,
     ws_channels: web::Data<WsChannels>,
     waiting_players: web::Data<WaitingPlayers>,
+    lobby_players: web::Data<LobbyPlayers>,
     game_manager: web::Data<Addr<GameManager>>,
     query: web::Query<std::collections::HashMap<String, String>>,
 ) -> Result<HttpResponse, Error> {
@@ -785,6 +892,7 @@ pub async fn ws_handler(
         sessions.get_ref().clone(),
         ws_channels.get_ref().clone(),
         waiting_players.get_ref().clone(),
+        lobby_players.get_ref().clone(),
         game_manager.get_ref().clone(),
         db_pool.get_ref().clone(),
     );
@@ -829,7 +937,10 @@ pub async fn ws_handler(
             if let Some(player_id) = &ws_session.player_id {
                 let mut channels = ws_channels.lock().unwrap();
                 let player_map = channels.entry(id).or_default();
-                player_map.insert(player_id.clone(), ws_session.tx.clone());
+                player_map.insert(
+                    player_id.clone(),
+                    (ws_session.tx.clone(), ws_session.session_id),
+                );
                 println!(
                     "✅ WebSocket connected: player_id={}, matching_id={}",
                     player_id, id
@@ -860,6 +971,17 @@ pub async fn ws_handler(
                     let _ = ws_session.tx.send(msg);
                 }
             }
+        }
+    }
+
+    // ロビー待機リストに追加（マッチングに参加していない場合）
+    if ws_session.matching_id.is_none() {
+        if let Some(player_id) = &ws_session.player_id {
+            let mut lobby_players = lobby_players.lock().unwrap();
+            lobby_players.insert(
+                player_id.clone(),
+                (ws_session.tx.clone(), ws_session.session_id),
+            );
         }
     }
 

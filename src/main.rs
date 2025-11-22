@@ -39,6 +39,7 @@ async fn main() -> std::io::Result<()> {
     let matching_sessions: MatchingSessions = Arc::new(Mutex::new(HashMap::new()));
     let ws_channels: WsChannels = Arc::new(Mutex::new(HashMap::new()));
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
+    let lobby_players: handlers::LobbyPlayers = Arc::new(Mutex::new(HashMap::new()));
 
     // ゲームマネージャーアクター起動
     let game_manager = GameManager::new(matching_sessions.clone()).start();
@@ -53,7 +54,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(matching_sessions.clone()))
             .app_data(web::Data::new(ws_channels.clone()))
             .app_data(web::Data::new(waiting_players.clone()))
-            .app_data(web::Data::new(game_manager.clone()))
+            .app_data(web::Data::new(lobby_players.clone()))
             .app_data(web::Data::new(game_manager.clone()))
             .route("/api/models/upload", web::post().to(upload_model))
             .route("/api/models", web::get().to(handlers::list_models))

@@ -221,6 +221,8 @@ wscat -c "ws://localhost:8080/ws"
 
 **matching_idをメモしておく**
 
+**補足:** この時点で、ロビーに接続している他の全プレイヤー（マッチング未参加者）にも`UpdateMatchings`がブロードキャストされます。
+
 ### WebSocket接続とマッチング参加（プレイヤーB）
 
 #### ステップ1: WebSocket接続
@@ -458,13 +460,13 @@ cargo run
 # ターミナル2: プレイヤーA WebSocket接続
 wscat -c "ws://localhost:8080/ws"
 
+# ターミナル3: プレイヤーB WebSocket接続（ロビー待機）
+wscat -c "ws://localhost:8080/ws"
+
 # プレイヤーA: マッチング作成
 > {"type":"CreateMatching"}
-# => MatchingCreatedを受信、matching_idをメモ
-
-# ターミナル3: プレイヤーB WebSocket接続
-wscat -c "ws://localhost:8080/ws"
-# => UpdateMatchingsを自動受信（プレイヤーAのmatching_idが含まれる）
+# => プレイヤーA: MatchingCreatedを受信
+# => プレイヤーB: UpdateMatchingsを自動受信（リアルタイム通知）
 
 # プレイヤーB: マッチング参加
 > {"type":"JoinMatch","data":{"matching_id":"<matching_id>"}}
@@ -500,7 +502,7 @@ wscat -c "ws://localhost:8080/ws"
 - [ ] WebSocket接続成功（両プレイヤー）
 - [ ] プレイヤーA: CreateMatching送信成功
 - [ ] プレイヤーA: MatchingCreated受信（matching_id取得）
-- [ ] プレイヤーB: UpdateMatchings自動受信（プレイヤーAのmatching_id確認）
+- [ ] プレイヤーB: UpdateMatchings自動受信（ロビー待機中に受信することを確認）
 - [ ] プレイヤーB: JoinMatch送信成功
 - [ ] 両プレイヤー: MatchingEstablished受信確認
 

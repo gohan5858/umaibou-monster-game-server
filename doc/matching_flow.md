@@ -22,6 +22,7 @@ sequenceDiagram
     ServerA->>Sessions: マッチング作成
     Sessions-->>ServerA: matching_id生成
     ServerA->>PlayerA: MatchingCreated<br/>{matching_id, current_matchings[]}
+    ServerA->>PlayerB: UpdateMatchings (Broadcast to Lobby)
 
     Note over PlayerA,GameMgr: 3. マッチング参加
     PlayerB->>ServerB: WebSocket接続<br/>(player_id)
@@ -90,7 +91,8 @@ sequenceDiagram
    - セッションの有効性チェック（`is_valid()`）
    - 無効な場合はエラーを返す
    - 有効な場合、`last_active_at`をクリア（再接続タイマー解除）
-   - `WsChannels`に登録
+    - `WsChannels`に登録
+    - `matching_id`がない場合、`LobbyPlayers`に登録
 
 **コード:** [websocket.rs:784-808](../src/handlers/websocket.rs#L784-L808)
 
@@ -181,7 +183,7 @@ sequenceDiagram
 
 #### 2.4 他の待機中プレイヤーへの通知
 
-`broadcast_update_matchings()`が自動的に呼ばれ、すべての待機中プレイヤーに`UpdateMatchings`メッセージが送信されます。
+`broadcast_update_matchings()`が自動的に呼ばれ、すべての待機中プレイヤー（`WaitingPlayers`）およびロビー待機プレイヤー（`LobbyPlayers`）に`UpdateMatchings`メッセージが送信されます。
 
 **コード:** [websocket.rs:161-191](../src/handlers/websocket.rs#L161-L191)
 
@@ -245,7 +247,7 @@ sequenceDiagram
 
 #### 3.4 他の待機中プレイヤーへの通知
 
-`broadcast_update_matchings()`が自動的に呼ばれ、すべての待機中プレイヤーに`UpdateMatchings`メッセージが送信されます（参加したマッチングが一覧から消えます）。
+`broadcast_update_matchings()`が自動的に呼ばれ、すべての待機中プレイヤーおよびロビー待機プレイヤーに`UpdateMatchings`メッセージが送信されます（参加したマッチングが一覧から消えます）。
 
 **コード:** [websocket.rs:343-345](../src/handlers/websocket.rs#L343-L345)
 
@@ -684,9 +686,18 @@ stateDiagram-v2
 ### WaitingPlayers
 
 ```rust
-HashMap<String, (Uuid, mpsc::UnboundedSender<WsMessage>)>
+```rust
+HashMap<String, (Uuid, mpsc::UnboundedSender<WsMessage>, Uuid)>
 // Key: player_id
-// Value: (matching_id, WebSocketチャンネル)
+// Value: (matching_id, WebSocketチャンネル, session_id)
+```
+
+### LobbyPlayers
+
+```rust
+HashMap<String, (mpsc::UnboundedSender<WsMessage>, Uuid)>
+// Key: player_id
+// Value: (WebSocketチャンネル, session_id)
 ```
 
 ### MatchingSessions
@@ -700,9 +711,9 @@ HashMap<Uuid, MatchingSession>
 ### WsChannels
 
 ```rust
-HashMap<Uuid, HashMap<String, mpsc::UnboundedSender<WsMessage>>>
+HashMap<Uuid, HashMap<String, (mpsc::UnboundedSender<WsMessage>, Uuid)>>
 // Key: matching_id
-// Value: { player_id: WebSocketチャンネル }
+// Value: { player_id: (WebSocketチャンネル, session_id) }
 ```
 
 ---
