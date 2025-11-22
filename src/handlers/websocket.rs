@@ -545,34 +545,11 @@ impl WsSession {
 
                                 println!("✅ Both players have selected characters");
                                 session.status = MatchingStatus::InGame;
-                                session.is_battle_started = true; // Add this line
+                                session.is_battle_started = true;
 
                                 let player_a_id = session.player_a.id.clone();
                                 let player_b_id = session.player_b.as_ref().unwrap().id.clone();
                                 drop(sessions_lock); // ロック解除
-
-                                // GameStartメッセージ送信
-                                let channels = ws_channels.lock().unwrap();
-                                if let Some(player_map) = channels.get(&matching_id_clone) {
-                                    // Player A
-                                    if let Some((sender_a, _)) = player_map.get(&player_a_id) {
-                                        let msg = WsMessage::GameStart {
-                                            opponent_character: player_b_char.clone(),
-                                            your_player_id: player_a_id.clone(),
-                                            timestamp: chrono::Utc::now(),
-                                        };
-                                        let _ = sender_a.send(msg);
-                                    }
-                                    // Player B
-                                    if let Some((sender_b, _)) = player_map.get(&player_b_id) {
-                                        let msg = WsMessage::GameStart {
-                                            opponent_character: player_a_char.clone(),
-                                            your_player_id: player_b_id.clone(),
-                                            timestamp: chrono::Utc::now(),
-                                        };
-                                        let _ = sender_b.send(msg);
-                                    }
-                                }
 
                                 // ゲームマネージャーに開始を通知
                                 let channels = ws_channels.lock().unwrap();

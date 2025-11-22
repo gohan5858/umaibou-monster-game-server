@@ -12,7 +12,7 @@ use uuid::Uuid;
 use webscoket_realtime_prac::db::models::Model3D;
 use webscoket_realtime_prac::game::manager::GameManager;
 use webscoket_realtime_prac::handlers::{
-    MatchingSessions, WaitingPlayers, WsChannels, list_models, ws_handler,
+    LobbyPlayers, MatchingSessions, WaitingPlayers, WsChannels, list_models, ws_handler,
 };
 use webscoket_realtime_prac::models::WsMessage;
 
@@ -56,12 +56,15 @@ async fn test_model_one_time_use() {
 
     // Start server with this pool
     let pool_clone = pool.clone();
+
+    let lobby_players: LobbyPlayers = Arc::new(Mutex::new(HashMap::new()));
     let srv = actix_test::start(move || {
         App::new()
             .app_data(web::Data::new(pool_clone.clone()))
             .app_data(web::Data::new(matching_sessions.clone()))
             .app_data(web::Data::new(ws_channels.clone()))
             .app_data(web::Data::new(waiting_players.clone()))
+            .app_data(web::Data::new(lobby_players.clone()))
             .app_data(web::Data::new(game_manager.clone()))
             .route("/api/models", web::get().to(list_models))
             .route("/ws", web::get().to(ws_handler))
