@@ -46,7 +46,7 @@ sequenceDiagram
     ServerB->>GameMgr: 両者Ready確認、ゲーム開始
     GameMgr->>PlayerA: GameStart<br/>{opponent_character, your_player_id}
     GameMgr->>PlayerB: GameStart<br/>{opponent_character, your_player_id}
-※ `GameStart` メッセージは `GameManager` のみが送信し、`websocket.rs` からの重複送信ロジックは削除しました。
+Note over PlayerA,PlayerB: GameStartはGameManagerのみが送信し、重複送信ロジックは削除しました。
 
     Note over PlayerA,GameMgr: 6. ゲーム中
     PlayerA->>GameMgr: StateUpdate<br/>{position, rotation}
