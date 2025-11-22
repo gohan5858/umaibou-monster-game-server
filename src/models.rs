@@ -221,11 +221,32 @@ impl MatchingSession {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum InputAction {
     Move { direction: Vector3, speed: f32 },
-    Attack { target_position: Vector3 },
+    Attack {
+        attack_type: AttackType,
+        position: Vector3,
+        direction: Vector3,
+    },
     Rotate { rotation: Vector3 },
 }
 
 // プレイヤー操作入力
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "VARCHAR")]
+#[serde(rename_all = "camelCase")]
+pub enum AttackType {
+    Normal,
+    Special,
+}
+
+impl std::fmt::Display for AttackType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AttackType::Normal => write!(f, "Normal"),
+            AttackType::Special => write!(f, "Special"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlayerInput {
     pub player_id: String,
