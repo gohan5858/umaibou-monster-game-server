@@ -9,10 +9,7 @@ use actix_files as fs;
 use actix_web::{App, HttpServer, web};
 use db::init_db;
 use game::manager::GameManager;
-use handlers::{
-    MatchingSessions, WaitingPlayers, WsChannels, create_matching, join_matching, upload_model,
-    ws_handler,
-};
+use handlers::{MatchingSessions, WaitingPlayers, WsChannels, upload_model, ws_handler};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -57,8 +54,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::Data::new(ws_channels.clone()))
             .app_data(web::Data::new(waiting_players.clone()))
             .app_data(web::Data::new(game_manager.clone()))
-            .route("/api/matching/create", web::post().to(create_matching))
-            .route("/api/matching/join", web::post().to(join_matching))
+            .app_data(web::Data::new(game_manager.clone()))
             .route("/api/models/upload", web::post().to(upload_model))
             .route("/api/models", web::get().to(handlers::list_models))
             .route("/ws", web::get().to(ws_handler))

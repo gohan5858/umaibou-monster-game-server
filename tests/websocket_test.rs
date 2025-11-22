@@ -11,9 +11,7 @@ use tokio::time::{Duration, timeout};
 use tokio_tungstenite::{connect_async, tungstenite::Message};
 use uuid::Uuid;
 use webscoket_realtime_prac::game::manager::GameManager;
-use webscoket_realtime_prac::handlers::{
-    MatchingSessions, WaitingPlayers, WsChannels, create_matching, join_matching, ws_handler,
-};
+use webscoket_realtime_prac::handlers::{MatchingSessions, WaitingPlayers, WsChannels, ws_handler};
 use webscoket_realtime_prac::models::{MatchingSession, MatchingStatus, Player, WsMessage};
 
 async fn create_test_db_pool() -> SqlitePool {
@@ -46,8 +44,6 @@ async fn test_websocket_connection() {
             .app_data(web::Data::new(ws_channels.clone()))
             .app_data(web::Data::new(waiting_players.clone()))
             .app_data(web::Data::new(game_manager.clone()))
-            .route("/api/matching/create", web::post().to(create_matching))
-            .route("/api/matching/join", web::post().to(join_matching))
             .route("/ws", web::get().to(ws_handler))
     });
 
@@ -194,6 +190,19 @@ async fn test_opponent_gets_character_selection_message() {
     let waiting_players: WaitingPlayers = Arc::new(Mutex::new(HashMap::new()));
     let game_manager = GameManager::new(matching_sessions.clone()).start();
 
+    // Insert "knight" model
+    let model = webscoket_realtime_prac::db::models::Model3D::new(
+        "knight".to_string(),
+        "knight.glb".to_string(),
+        "uploads/knight.glb".to_string(),
+        1024,
+        "model/gltf-binary".to_string(),
+    );
+    model
+        .insert(&db_pool)
+        .await
+        .expect("Failed to insert model");
+
     // マッチングセッションを手動で作成
     let matching_id = Uuid::new_v4();
     let player_a_id = "player_a_test".to_string();
@@ -201,6 +210,7 @@ async fn test_opponent_gets_character_selection_message() {
 
     let session = MatchingSession {
         matching_id,
+        creator_username: None,
         player_a: Player::new(player_a_id.clone()),
         player_b: Some(Player::new(player_b_id.clone())),
         status: MatchingStatus::Waiting,

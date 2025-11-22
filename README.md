@@ -11,8 +11,8 @@ WebSocketによる60Hzのゲーム状態配信とREST APIによるマッチン�
 
 ### プレイヤーマッチング
 
-- マッチングID生成（REST API）
-- マッチング要求・成立（REST API）
+- マッチング作成・参加（WebSocket）
+- マッチング一覧取得・リアルタイム更新（WebSocket）
 - マッチング成功通知（WebSocket）
 - キャラクター選択・準備完了（WebSocket）
 - ゲーム開始通知（WebSocket）
@@ -111,38 +111,19 @@ export DEPLOY_USER=your-username
 
 ### REST API
 
-#### マッチングID生成
+#### 3Dモデル一覧取得
 
 ```bash
-POST /api/matching/create
-Content-Type: application/json
-
-{
-  "player_id": "player_a"
-}
+GET /api/models
 
 # Response
-{
-  "matching_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-#### マッチング参加
-
-```bash
-POST /api/matching/join
-Content-Type: application/json
-
-{
-  "matching_id": "550e8400-e29b-41d4-a716-446655440000",
-  "player_id": "player_b"
-}
-
-# Response
-{
-  "success": true,
-  "message": "Matching successful"
-}
+[
+  {
+    "id": "model_id",
+    "name": "warrior.glb",
+    "is_used": false
+  }
+]
 ```
 
 ### WebSocket
@@ -153,19 +134,26 @@ Content-Type: application/json
 ws://localhost:8080/ws?player_id={player_id}&matching_id={matching_id}
 ```
 
+- `player_id`: 任意（指定なしの場合は自動生成）
+- `matching_id`: 任意（再接続時に指定）
+
 #### メッセージ型
 
 **クライアント → サーバー:**
-- `SelectCharacter` - キャラクター選択
-- `Ready` - 準備完了
+- `CreateMatching` - マッチング作成（`username` 指定可）
+- `JoinMatch` - マッチング参加
+- `Ready` - キャラクター選択・準備完了
 - `Input` - 操作入力（移動・攻撃・回転）
 
 **サーバー → クライアント:**
-- `MatchingSuccess` - マッチング成立
+- `MatchingCreated` - マッチング作成完了通知
+- `UpdateMatchings` - マッチング一覧更新
+- `MatchingEstablished` - マッチング成立（相手決定）
 - `OpponentCharacterSelected` - 相手キャラクター情報
 - `GameStart` - ゲーム開始
-- `GameStateUpdate` - ゲーム状態更新（60Hz）
+- `OpponentStateUpdate` - 相手の状態更新
 - `GameEnd` - ゲーム終了・結果
+- `Error` - エラー通知
 
 詳細は [WebSocketメッセージ仕様](doc/websocket-messages.md) を参照。
 
@@ -173,40 +161,19 @@ ws://localhost:8080/ws?player_id={player_id}&matching_id={matching_id}
 
 ### 自動テスト
 
-統合テストスクリプトで全テストを一括実行：
-
 ```bash
-./scripts/run_tests.sh
-```
-
-個別にテスト実行：
-
-```bash
-# REST APIテスト
-cargo test --test api_test
+# ロジックテスト
+cargo test --test matching_logic_test
 
 # WebSocketテスト
 cargo test --test websocket_test
 
-# 統合テスト
-cargo test --test integration_test
+# モデル使用テスト
+cargo test --test model_usage_test
 
 # 全テスト実行
 cargo test
 ```
-
-**自動テストカバレッジ：**
-
-**REST API:**
-- ✅ マッチング作成API
-- ✅ マッチング参加API（成功ケース）
-- ✅ マッチング参加エラーハンドリング
-
-**WebSocket:**
-- ✅ WebSocket接続・Ping/Pong
-- ✅ キャラクター選択メッセージ送信
-- ✅ 準備完了メッセージ送信
-- ✅ 操作入力メッセージ送信（移動）
 
 ### 手動テスト
 
@@ -217,7 +184,7 @@ cargo test
 npm install -g wscat
 
 # WebSocket接続テスト
-wscat -c "ws://localhost:8080/ws?player_id=player_a&matching_id=<MATCHING_ID>"
+wscat -c "ws://localhost:8080/ws?player_id=player_a"
 ```
 
 ## 📁 プロジェクト構成
@@ -230,22 +197,28 @@ wscat -c "ws://localhost:8080/ws?player_id=player_a&matching_id=<MATCHING_ID>"
 │   ├── main.rs                 # サーバー起動
 │   ├── models.rs               # データモデル
 │   ├── utils.rs                # ユーティリティ関数
+│   ├── db/
+│   │   ├── mod.rs
+│   │   └── models.rs           # データベースモデル
 │   ├── game/
 │   │   ├── mod.rs
 │   │   ├── state.rs            # ゲーム状態管理
 │   │   └── manager.rs          # 60Hzゲームループ
 │   └── handlers/
 │       ├── mod.rs
-│       ├── matching.rs         # マッチングAPI
+│       ├── model_upload.rs     # モデルアップロードAPI
 │       └── websocket.rs        # WebSocketハンドラー
 ├── tests/
-│   └── api_test.rs             # REST APIテスト
+│   ├── matching_logic_test.rs  # マッチングロジックテスト
+│   ├── model_usage_test.rs     # モデル使用テスト
+│   └── websocket_test.rs       # WebSocketテスト
 ├── scripts/
 │   └── run_tests.sh            # 自動テスト実行スクリプト
 └── doc/
     ├── specification.md        # 仕様書
     ├── testing-guide.md        # テスト手順書
-    └── websocket-messages.md   # メッセージサンプル集
+    ├── websocket-messages.md   # メッセージサンプル集
+    └── matching_flow.md        # マッチング詳細フロー
 ```
 
 ## 🏗️ アーキテクチャ
@@ -259,6 +232,7 @@ wscat -c "ws://localhost:8080/ws?player_id=player_a&matching_id=<MATCHING_ID>"
 - **serde** - JSON シリアライズ
 - **uuid** - ユニークID生成
 - **chrono** - タイムスタンプ管理
+- **sqlx** - データベース操作 (SQLite)
 
 ### 設計のポイント
 
@@ -301,4 +275,5 @@ ctx.run_interval(Duration::from_millis(16), |act, _ctx| {
 - [仕様書](doc/specification.md)
 - [テスト手順書](doc/testing-guide.md)
 - [WebSocketメッセージ仕様](doc/websocket-messages.md)
+- [マッチング詳細フロー](doc/matching_flow.md)
 - [actix-web公式ドキュメント](https://actix.rs/)

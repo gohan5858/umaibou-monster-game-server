@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT\n                id as \"id!\",\n                file_name as \"file_name!\",\n                file_path as \"file_path!\",\n                file_size as \"file_size!\",\n                mime_type as \"mime_type!\",\n                uploaded_at as \"uploaded_at!\",\n                is_used as \"is_used!\"\n            FROM models WHERE id = ?\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_name!",
+        "ordinal": 1,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_path!",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "file_size!",
+        "ordinal": 3,
+        "type_info": "Int64"
+      },
+      {
+        "name": "mime_type!",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "uploaded_at!",
+        "ordinal": 5,
+        "type_info": "Text"
+      },
+      {
+        "name": "is_used!",
+        "ordinal": 6,
+        "type_info": "Bool"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "66241b54b1f9fbcdd6185a7509e2fcbc9448db1172488e79704dfb05ecbb5ce9"
+}

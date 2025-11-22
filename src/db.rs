@@ -3,7 +3,6 @@ pub mod models;
 use crate::db::models::Model3D;
 use sqlx::{SqlitePool, sqlite::SqlitePoolOptions};
 use std::path::Path;
-use uuid::Uuid;
 
 /// データベース接続プールを初期化
 pub async fn init_db(database_url: &str) -> Result<SqlitePool, sqlx::Error> {

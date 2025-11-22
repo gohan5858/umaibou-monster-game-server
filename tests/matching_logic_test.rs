@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use tokio::time::sleep;
 use uuid::Uuid;
 use webscoket_realtime_prac::game::manager::GameManager;
-use webscoket_realtime_prac::handlers::{MatchingSessions, WaitingPlayers, WsChannels};
+use webscoket_realtime_prac::handlers::MatchingSessions;
 use webscoket_realtime_prac::models::{MatchingSession, MatchingStatus, Player};
 
 #[actix_rt::test]
@@ -21,6 +21,7 @@ async fn test_matching_validity_logic() {
     // 1. Create a session
     let mut session = MatchingSession {
         matching_id,
+        creator_username: None,
         player_a: Player::new(player_a_id.clone()),
         player_b: Some(Player::new(player_b_id.clone())),
         status: MatchingStatus::Matched,
@@ -64,6 +65,7 @@ async fn test_cleanup_task() {
     // Insert an expired session
     let session = MatchingSession {
         matching_id,
+        creator_username: None,
         player_a: Player::new("a".to_string()),
         player_b: Some(Player::new("b".to_string())),
         status: MatchingStatus::Matched,
