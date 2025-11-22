@@ -8,8 +8,7 @@ on:
 
 env:
   RUST_VERSION: "1.89"
-  TELEPORT_VERSION: "14.3.0"
-  TELEPORT_PROXY: teleport.localhouse.jp:443
+  SSH_HOSTNAME: umamon-ssh.localhouse.jp
   DEPLOY_SERVER: ct108
   DEPLOY_PATH: Projects
 
@@ -31,31 +30,30 @@ jobs:
           cargo build --release --bin umaibou-monster-game-server
           chmod +x target/release/umaibou-monster-game-server
 
-      - name: Install Teleport
+      - name: Install cloudflared
         run: |
-          curl -O https://cdn.teleport.dev/teleport-v${{ env.TELEPORT_VERSION }}-linux-amd64-bin.tar.gz
-          tar -xzf teleport-v${{ env.TELEPORT_VERSION }}-linux-amd64-bin.tar.gz
-          sudo mv teleport/tsh /usr/local/bin/
-          tsh version
+          # cloudflaredのインストール
+          wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+          sudo dpkg -i cloudflared-linux-amd64.deb
+          cloudflared --version
 
-      - name: Setup Teleport Identity
+      - name: Setup SSH
         run: |
-          # Identity FileをSecretsから復元
-          echo "${{ secrets.TELEPORT_IDENTITY }}" > auth.pem
-          chmod 600 auth.pem
+          # SSH秘密鍵の設定
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-          # Identity fileのパスを絶対パスで取得
-          echo "TELEPORT_IDENTITY_FILE=$(pwd)/auth.pem" >> $GITHUB_ENV
+          # SSH configファイルの設定
+          cp .github/ssh_config ~/.ssh/config
+          chmod 600 ~/.ssh/config
 
-      - name: Verify Teleport connection
+          echo "SSH setup completed"
+
+      - name: Verify SSH connection
         run: |
-          # Identity fileの内容を確認（デバッグ用）
-          echo "Checking identity file..."
-          ls -la auth.pem
-
-          # Identity Fileを使って接続確認（実際のSSH接続テスト）
-          echo "Attempting to connect to ${{ env.DEPLOY_SERVER }} via ${{ env.TELEPORT_PROXY }}..."
-          tsh --proxy=${{ env.TELEPORT_PROXY }} -i ${{ env.TELEPORT_IDENTITY_FILE }} ssh ${{ secrets.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} "echo 'Teleport connection successful'"
+          # SSH接続確認
+          ssh umamon "echo 'SSH connection successful'"
 
       - name: Deploy to server
         run: |
@@ -63,17 +61,15 @@ jobs:
           scripts/deploy.sh
         env:
           DEPLOY_SERVER: ${{ env.DEPLOY_SERVER }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_USER: ${{ env.DEPLOY_SERVER }}
           DEPLOY_PATH: ${{ env.DEPLOY_PATH }}
-          TELEPORT_PROXY: ${{ env.TELEPORT_PROXY }}
-          TELEPORT_IDENTITY_FILE: ${{ env.TELEPORT_IDENTITY_FILE }}
 
       - name: Verify deployment
         run: |
-          tsh --proxy=${{ env.TELEPORT_PROXY }} -i ${{ env.TELEPORT_IDENTITY_FILE }} ssh ${{ secrets.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} "pgrep -f umaibou-monster-game-server && echo 'Service is running'"
+          ssh umamon "pgrep -f umaibou-monster-game-server && echo 'Service is running'"
 
       - name: Cleanup
         if: always()
         run: |
-          rm -f auth.pem
-          tsh logout || true
+          rm -f ~/.ssh/id_rsa
+          rm -f ~/.ssh/config
