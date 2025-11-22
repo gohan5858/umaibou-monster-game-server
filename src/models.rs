@@ -272,6 +272,13 @@ pub enum WsMessage {
         opponent: Character,
         timestamp: DateTime<Utc>, // サーバー送信時刻（レイテンシ計測用）
     },
+    OpponentAttacked {
+        attacker_id: String,
+        attack_type: AttackType,
+        position: Vector3,
+        direction: Vector3,
+        timestamp: DateTime<Utc>,
+    },
     GameEnd {
         result: GameResult,
         timestamp: DateTime<Utc>,

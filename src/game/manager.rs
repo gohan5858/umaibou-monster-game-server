@@ -58,6 +58,39 @@ impl GameManager {
         }
     }
 
+    /// 特定のプレイヤーが攻撃した時、相手にのみ攻撃情報を送信
+    fn send_opponent_attack(
+        &self,
+        matching_id: &Uuid,
+        attacker_id: &str,
+        attack_type: crate::models::AttackType,
+        position: crate::models::Vector3,
+        direction: crate::models::Vector3,
+    ) {
+        if let Some(game) = self.games.get(matching_id) {
+            if let Some(senders) = self.ws_senders.get(matching_id) {
+                let now = Utc::now();
+
+                let opponent_id = if attacker_id == game.player_a_id {
+                    &game.player_b_id
+                } else {
+                    &game.player_a_id
+                };
+
+                if let Some(sender) = senders.get(opponent_id) {
+                    let msg = WsMessage::OpponentAttacked {
+                        attacker_id: attacker_id.to_string(),
+                        attack_type,
+                        position,
+                        direction,
+                        timestamp: now,
+                    };
+                    let _ = sender.send(msg);
+                }
+            }
+        }
+    }
+
     /// ゲーム終了通知を送信
     fn broadcast_game_end(&mut self, matching_id: &Uuid, result: GameResult) {
         if let Some(senders) = self.ws_senders.get(matching_id) {
@@ -204,10 +237,30 @@ impl Handler<ProcessInput> for GameManager {
     fn handle(&mut self, msg: ProcessInput, _ctx: &mut Self::Context) {
         if let Some(game) = self.games.get_mut(&msg.matching_id) {
             let player_id = msg.input.player_id.clone();
-            game.process_input(msg.input);
+            let action = msg.input.action.clone(); // 先にアクションをクローン
 
-            // 入力処理後、相手に状態を通知
-            self.send_opponent_state_for_player(&msg.matching_id, &player_id);
+            game.process_input(msg.input); // ここで msg.input の所有権が移動
+
+            // クローンしたアクションで通知を分岐
+            match action {
+                crate::models::InputAction::Attack {
+                    attack_type,
+                    position,
+                    direction,
+                } => {
+                    self.send_opponent_attack(
+                        &msg.matching_id,
+                        &player_id,
+                        attack_type,
+                        position,
+                        direction,
+                    );
+                }
+                _ => {
+                    // Attack以外はこれまで通り、更新後の状態で通知
+                    self.send_opponent_state_for_player(&msg.matching_id, &player_id);
+                }
+            }
         }
     }
 }
