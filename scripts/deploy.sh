@@ -38,12 +38,12 @@ EOF
 # 2. 実行中のサービスを停止（存在する場合）
 echo -e "${YELLOW}Step 2: Stopping existing service...${NC}"
 ssh ${REMOTE_TARGET} <<EOF
-    if pgrep -f umaibou-monster-game-server > /dev/null; then
-        echo "Stopping umaibou-monster-game-server..."
-        pkill -TERM -f umaibou-monster-game-server || true
+    if pgrep -f server > /dev/null; then
+        echo "Stopping server..."
+        pkill -TERM -f server || true
         sleep 2
-        if pgrep -f umaibou-monster-game-server > /dev/null; then
-            pkill -KILL -f umaibou-monster-game-server || true
+        if pgrep -f server > /dev/null; then
+            pkill -KILL -f server || true
         fi
         echo "Service stopped"
     else
@@ -54,7 +54,7 @@ EOF
 # 3. 現在のバージョンをバックアップ
 echo -e "${YELLOW}Step 3: Creating backup of current version...${NC}"
 ssh ${REMOTE_TARGET} <<EOF
-    if [ -d "${REMOTE_APP_DIR}/target" ] || [ -f "${REMOTE_APP_DIR}/umaibou-monster-game-server" ]; then
+    if [ -d "${REMOTE_APP_DIR}/target" ] || [ -f "${REMOTE_APP_DIR}/server" ]; then
         echo "Creating backup..."
         cp -r ${REMOTE_APP_DIR} ${BACKUP_DIR}
         echo "Backup created"
@@ -68,7 +68,7 @@ echo -e "${YELLOW}Step 4: Uploading new version...${NC}"
 
 # バイナリをアップロード
 echo "Uploading binary..."
-scp target/release/umaibou-monster-game-server ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
+scp target/release/server ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
 
 # マイグレーションファイルをアップロード
 if [ -d "migrations" ]; then
@@ -86,7 +86,7 @@ fi
 echo -e "${YELLOW}Step 5: Setting permissions...${NC}"
 ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
-    chmod +x umaibou-monster-game-server
+    chmod +x server
     echo "Permissions set"
 EOF
 
@@ -94,7 +94,7 @@ EOF
 echo -e "${YELLOW}Step 6: Running database migrations...${NC}"
 ssh ${REMOTE_TARGET} <<'EOF'
     cd ~/Projects/umaibou-monster-game-server
-    if [ -f "umaibou-monster-game-server" ] && [ -d "migrations" ]; then
+    if [ -f "server" ] && [ -d "migrations" ]; then
         export DATABASE_URL="${DATABASE_URL:-sqlite://data/game.db}"
         echo "Migration files deployed. Run 'sqlx migrate run' manually if needed."
     fi
@@ -104,7 +104,7 @@ EOF
 echo -e "${YELLOW}Step 7: Starting service...${NC}"
 ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
-    nohup ./umaibou-monster-game-server > server.log 2>&1 &
+    nohup ./server > server.log 2>&1 &
     echo \$! > server.pid
     echo "Service started with PID: \$(cat server.pid)"
 EOF
@@ -115,7 +115,7 @@ sleep 3
 
 ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
-    if pgrep -f umaibou-monster-game-server > /dev/null; then
+    if pgrep -f server > /dev/null; then
         echo "✓ Service is running"
         if ss -tuln | grep -q :8080; then
             echo "✓ Service is listening on port 8080"

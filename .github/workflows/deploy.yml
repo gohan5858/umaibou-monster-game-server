@@ -39,8 +39,8 @@ jobs:
 
           # deploy.shが期待する場所にバイナリを移動
           mkdir -p target/release
-          cp target/x86_64-unknown-linux-musl/release/umaibou-monster-game-server target/release/
-          chmod +x target/release/umaibou-monster-game-server
+          cp target/x86_64-unknown-linux-musl/release/umaibou-monster-game-server target/release/server
+          chmod +x target/release/server
 
       - name: Install cloudflared
         run: |
@@ -78,7 +78,7 @@ jobs:
 
       - name: Verify deployment
         run: |
-          ssh umamon "pgrep -f umaibou-monster-game-server && echo 'Service is running'"
+          ssh umamon "pgrep -f server && echo 'Service is running'"
 
       - name: Cleanup
         if: always()
