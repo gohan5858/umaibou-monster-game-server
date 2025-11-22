@@ -29,33 +29,6 @@ impl GameManager {
         }
     }
 
-    /// 各プレイヤーに相手の状態のみを送信
-    fn send_opponent_states(&self, matching_id: &Uuid) {
-        if let Some(game) = self.games.get(matching_id) {
-            if let Some(senders) = self.ws_senders.get(matching_id) {
-                let now = Utc::now();
-
-                // プレイヤーAに相手（プレイヤーB）の状態を送信
-                if let Some(sender_a) = senders.get(&game.player_a_id) {
-                    let msg = WsMessage::OpponentStateUpdate {
-                        opponent: game.player_b_character.clone(),
-                        timestamp: now,
-                    };
-                    let _ = sender_a.send(msg);
-                }
-
-                // プレイヤーBに相手（プレイヤーA）の状態を送信
-                if let Some(sender_b) = senders.get(&game.player_b_id) {
-                    let msg = WsMessage::OpponentStateUpdate {
-                        opponent: game.player_a_character.clone(),
-                        timestamp: now,
-                    };
-                    let _ = sender_b.send(msg);
-                }
-            }
-        }
-    }
-
     /// 特定のプレイヤーが更新した時、相手にのみ状態を送信
     fn send_opponent_state_for_player(&self, matching_id: &Uuid, player_id: &str) {
         if let Some(game) = self.games.get(matching_id) {
