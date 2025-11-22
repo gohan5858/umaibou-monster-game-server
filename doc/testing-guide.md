@@ -270,7 +270,7 @@ wscat -c "ws://localhost:8080/ws"
 プレイヤーBが以下のメッセージを送信：
 
 ```json
-{"type":"JoinMatch","data":{"matching_id":"550e8400-e29b-41d4-a716-446655440000"}}
+{"type":"JoinMatch","data":{"matching_id":"d7f79dec-5a7b-479e-86b2-d05aaac0478e"}}
 ```
 
 **両プレイヤーが受信するメッセージ：**
