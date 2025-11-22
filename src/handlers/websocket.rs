@@ -270,15 +270,36 @@ impl WsSession {
         // WsChannelsに両者を登録
         let mut channels = ws_channels.lock().unwrap();
         let player_map = channels.entry(matching_id).or_default();
+
+        // プレイヤーAのsenderを登録（waiting_playersにいた場合）
         if let Some(sender) = player_a_sender {
+            println!(
+                "✅ Registering player_a sender from waiting_players: {}",
+                player_a_id
+            );
             player_map.insert(player_a_id.clone(), sender.1);
+        } else {
+            // waiting_playersにいない場合は、既にws_channelsに接続している可能性
+            println!("⚠️ player_a not found in waiting_players: {}", player_a_id);
+            println!(
+                "📋 Current player_map keys before registration: {:?}",
+                player_map.keys().collect::<Vec<_>>()
+            );
         }
+
+        // プレイヤーBのsenderを登録
+        println!("✅ Registering player_b sender: {}", player_id_clone);
         player_map.insert(player_id_clone.clone(), tx.clone());
         drop(channels);
 
         // 両者にMatchingEstablishedを送信（モデルデータはまだNone）
         let channels = ws_channels.lock().unwrap();
         if let Some(player_map) = channels.get(&matching_id) {
+            println!(
+                "📋 player_map keys: {:?}",
+                player_map.keys().collect::<Vec<_>>()
+            );
+
             // プレイヤーAに送信
             if let Some(sender_a) = player_map.get(&player_a_id) {
                 let msg = crate::models::WsMessage::MatchingEstablished {
@@ -287,7 +308,13 @@ impl WsSession {
                     model_data: None,
                     timestamp: chrono::Utc::now(),
                 };
+                println!(
+                    "✅ Sending MatchingEstablished to player_a: {}",
+                    player_a_id
+                );
                 let _ = sender_a.send(msg);
+            } else {
+                println!("❌ sender_a not found for player_a_id: {}", player_a_id);
             }
 
             // プレイヤーBに送信
@@ -298,9 +325,20 @@ impl WsSession {
                     model_data: None,
                     timestamp: chrono::Utc::now(),
                 };
+                println!(
+                    "✅ Sending MatchingEstablished to player_b: {}",
+                    player_id_clone
+                );
                 let _ = sender_b.send(msg);
+            } else {
+                println!("❌ sender_b not found for player_b_id: {}", player_id_clone);
             }
+        } else {
+            println!("❌ player_map not found for matching_id: {}", matching_id);
         }
+
+        // 他の待機中プレイヤーにUpdateMatchingsを送信
+        self.broadcast_update_matchings();
     }
 
     /// 準備完了処理（キャラクター選択を含む）
