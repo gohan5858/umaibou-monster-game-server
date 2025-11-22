@@ -38,41 +38,29 @@ WebSocketによる60Hzのゲーム状態配信とREST APIによるマッチン�
 ### 概要
 
 - **トリガー**: `release`ブランチが`main`にマージされたとき
-- **デプロイ方法**: GitHub Actions + Teleport (OIDC認証)
+- **デプロイ方法**: GitHub Actions + `tsh scp`
 - **デプロイ先**: `ct108` (Teleport経由)
 
 ### 初期設定
 
-#### 1. Teleport側の設定 (Machine ID)
+#### 1. Identity Fileの発行
 
-プロジェクトに含まれる設定ファイルを使用して、TeleportサーバーでBotとトークンを作成します。
-
-**1. ロールの作成 (`teleport-config/role.yaml`)**
+ローカルマシンで以下のコマンドを実行し、認証用ファイルを発行します。
 
 ```bash
-tctl create teleport-config/role.yaml
-```
+# Teleportにログイン
+tsh login --proxy=teleport.localhouse.jp:443 --user=your-username
 
-**2. トークンの作成 (`teleport-config/token.yaml`)**
-※ `token.yaml` 内のリポジトリ名が正しいか確認してから実行してください。
-
-```bash
-tctl create teleport-config/token.yaml
-```
-
-**3. Botユーザーの紐付け**
-
-```bash
-tctl users add --roles=github-actions-deployer github-actions
+# Identity Fileのエクスポート（有効期限に注意）
+tsh identity export teleport-auth.pem
 ```
 
 #### 2. GitHubシークレットの設定
 
 リポジトリの Settings > Secrets and variables > Actions で以下を追加：
 
-- **`DEPLOY_USER`**: デプロイ先サーバーのユーザー名（例: `ubuntu`）
-
-※ Teleportのプロキシアドレスなどはワークフロー内で環境変数として定義されていますが、必要に応じてSecretsに移動することも可能です。
+- **`TELEPORT_IDENTITY`**: 上記で作成した `teleport-auth.pem` の中身をすべてコピーして貼り付け
+- **`DEPLOY_USER`**: デプロイ先サーバーのユーザー名（例: `gohan`）
 
 ### デプロイ方法
 
@@ -114,8 +102,7 @@ tail -f ~/Projects/umaibou-monster-game-server/server.log
 ### ロールバック
 
 ```bash
-# ローカルマシンから（tshではなくssh/scpを使用する場合）
-# Teleport経由でssh接続できる環境が必要です
+# ローカルマシンから
 export DEPLOY_USER=your-username
 ./scripts/rollback.sh
 ```

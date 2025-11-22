@@ -8,14 +8,12 @@ on:
 
 env:
   RUST_VERSION: "1.70"
-  # Teleportの設定
+  TELEPORT_VERSION: "14.3.0"
   TELEPORT_PROXY: teleport.localhouse.jp:443
-  TELEPORT_AUTH_TOKEN: github-token  # token.yamlで定義した名前
-  DEPLOY_SERVER: ct108               # Teleport上のノード名
+  DEPLOY_SERVER: ct108
   DEPLOY_PATH: Projects
 
 jobs:
-  # mainにマージされたブランチがreleaseかチェック
   check-release:
     runs-on: ubuntu-latest
     outputs:
@@ -48,11 +46,6 @@ jobs:
     if: needs.check-release.outputs.should_deploy == 'true'
     runs-on: ubuntu-latest
 
-    # OIDC認証に必須の権限設定
-    permissions:
-      id-token: write
-      contents: read
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -67,20 +60,27 @@ jobs:
           cargo build --release --bin umaibou-monster-game-server
           chmod +x target/release/umaibou-monster-game-server
 
-      # Teleportのセットアップ (バージョンはサーバーに合わせて調整推奨)
       - name: Install Teleport
-        uses: teleport-actions/setup@v1
-        with:
-          version: 16.4.7
+        run: |
+          curl -O https://cdn.teleport.dev/teleport-v${{ env.TELEPORT_VERSION }}-linux-amd64-bin.tar.gz
+          tar -xzf teleport-v${{ env.TELEPORT_VERSION }}-linux-amd64-bin.tar.gz
+          sudo mv teleport/tsh /usr/local/bin/
+          tsh version
 
-      # Teleport OIDC認証 (Machine ID)
       - name: Authenticate with Teleport
-        uses: teleport-actions/auth@v2
-        with:
-          proxy: ${{ env.TELEPORT_PROXY }}
-          token: ${{ env.TELEPORT_AUTH_TOKEN }}
-          certificate-ttl: 1h
-          anonymous-telemetry: 0
+        run: |
+          # Identity FileをSecretsから復元
+          echo "${{ secrets.TELEPORT_IDENTITY }}" > auth.pem
+          chmod 600 auth.pem
+
+          # Identity Fileを使ってログイン
+          tsh login \
+            --proxy=${{ env.TELEPORT_PROXY }} \
+            --auth=local \
+            --identity=auth.pem
+
+          # 接続確認
+          tsh ls
 
       - name: Deploy to server
         run: |
@@ -93,5 +93,10 @@ jobs:
 
       - name: Verify deployment
         run: |
-          # sshコマンドがそのまま使えるようになっている
-          ssh ${{ secrets.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} "pgrep -f umaibou-monster-game-server && echo 'Service is running'"
+          tsh ssh ${{ secrets.DEPLOY_USER }}@${{ env.DEPLOY_SERVER }} "pgrep -f umaibou-monster-game-server && echo 'Service is running'"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          rm -f auth.pem
+          tsh logout || true
