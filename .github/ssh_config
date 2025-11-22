@@ -1,0 +1,7 @@
+Host umamon
+    HostName umamon-ssh.localhouse.jp
+    User ct108
+    IdentityFile ~/.ssh/id_rsa
+    ProxyCommand cloudflared access ssh --hostname umamon-ssh.localhouse.jp
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null

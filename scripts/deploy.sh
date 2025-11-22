@@ -17,28 +17,16 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}Starting deployment to ${DEPLOY_SERVER}${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-# Teleport設定
-TSH_OPTS=""
-if [ -n "${TELEPORT_PROXY}" ]; then
-    TSH_OPTS="--proxy=${TELEPORT_PROXY}"
-    echo -e "${YELLOW}Using Teleport proxy: ${TELEPORT_PROXY}${NC}"
-fi
-
-if [ -n "${TELEPORT_IDENTITY_FILE}" ]; then
-    TSH_OPTS="${TSH_OPTS} -i ${TELEPORT_IDENTITY_FILE}"
-    echo -e "${YELLOW}Using Teleport identity file: ${TELEPORT_IDENTITY_FILE}${NC}"
-fi
-
 # デプロイ先の設定
-# tsh scp/ssh では user@node の形式で使用
-REMOTE_TARGET="${DEPLOY_USER}@${DEPLOY_SERVER}"
+# SSH config aliasを使用
+REMOTE_TARGET="umamon"
 REMOTE_BASE_DIR="/home/${DEPLOY_USER}/${DEPLOY_PATH}"
 REMOTE_APP_DIR="${REMOTE_BASE_DIR}/umaibou-monster-game-server"
 BACKUP_DIR="${REMOTE_BASE_DIR}/umaibou-monster-game-server.backup"
 
 # 1. リモートサーバーでディレクトリ準備
 echo -e "${YELLOW}Step 1: Preparing remote directory...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     mkdir -p ${REMOTE_APP_DIR}
 
     # 既存のバックアップがあれば削除
@@ -49,7 +37,7 @@ EOF
 
 # 2. 実行中のサービスを停止（存在する場合）
 echo -e "${YELLOW}Step 2: Stopping existing service...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     if pgrep -f umaibou-monster-game-server > /dev/null; then
         echo "Stopping umaibou-monster-game-server..."
         pkill -TERM -f umaibou-monster-game-server || true
@@ -65,7 +53,7 @@ EOF
 
 # 3. 現在のバージョンをバックアップ
 echo -e "${YELLOW}Step 3: Creating backup of current version...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     if [ -d "${REMOTE_APP_DIR}/target" ] || [ -f "${REMOTE_APP_DIR}/umaibou-monster-game-server" ]; then
         echo "Creating backup..."
         cp -r ${REMOTE_APP_DIR} ${BACKUP_DIR}
@@ -80,23 +68,23 @@ echo -e "${YELLOW}Step 4: Uploading new version...${NC}"
 
 # バイナリをアップロード
 echo "Uploading binary..."
-tsh ${TSH_OPTS} scp target/release/umaibou-monster-game-server ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
+scp target/release/umaibou-monster-game-server ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
 
 # マイグレーションファイルをアップロード
 if [ -d "migrations" ]; then
     echo "Uploading migrations..."
-    tsh ${TSH_OPTS} scp -r migrations ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
+    scp -r migrations ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
 fi
 
 # dataディレクトリをアップロード
 if [ -d "data" ]; then
     echo "Uploading data directory..."
-    tsh ${TSH_OPTS} scp -r data ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
+    scp -r data ${REMOTE_TARGET}:${REMOTE_APP_DIR}/
 fi
 
 # 5. パーミッション設定
 echo -e "${YELLOW}Step 5: Setting permissions...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
     chmod +x umaibou-monster-game-server
     echo "Permissions set"
@@ -104,7 +92,7 @@ EOF
 
 # 6. データベースマイグレーション実行
 echo -e "${YELLOW}Step 6: Running database migrations...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << 'EOF'
+ssh ${REMOTE_TARGET} <<'EOF'
     cd ~/Projects/umaibou-monster-game-server
     if [ -f "umaibou-monster-game-server" ] && [ -d "migrations" ]; then
         export DATABASE_URL="${DATABASE_URL:-sqlite://data/game.db}"
@@ -114,7 +102,7 @@ EOF
 
 # 7. サービスを起動
 echo -e "${YELLOW}Step 7: Starting service...${NC}"
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
     nohup ./umaibou-monster-game-server > server.log 2>&1 &
     echo \$! > server.pid
@@ -125,7 +113,7 @@ EOF
 echo -e "${YELLOW}Step 8: Health check...${NC}"
 sleep 3
 
-tsh ${TSH_OPTS} ssh ${REMOTE_TARGET} << EOF
+ssh ${REMOTE_TARGET} <<EOF
     cd ${REMOTE_APP_DIR}
     if pgrep -f umaibou-monster-game-server > /dev/null; then
         echo "✓ Service is running"
