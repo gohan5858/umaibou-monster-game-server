@@ -119,7 +119,7 @@ impl WsSession {
                                 ),
                             };
                             let _ = tx.send(error_msg);
-                            return;
+                            return None;
                         }
 
                         // モデルを使用済みにマーク
@@ -132,7 +132,7 @@ impl WsSession {
                                 message: "Failed to process model selection".to_string(),
                             };
                             let _ = tx.send(error_msg);
-                            return;
+                            return None;
                         }
 
                         println!(
@@ -177,6 +177,8 @@ impl WsSession {
                             "✅ Matching created: matching_id={}, current_matchings={:?}",
                             matching_id, current_matchings
                         );
+
+                        Some(matching_id)
                     }
                     Ok(None) => {
                         println!("❌ Model ID not found: {}", model_id_clone);
@@ -187,7 +189,7 @@ impl WsSession {
                             ),
                         };
                         let _ = tx.send(error_msg);
-                        return;
+                        None
                     }
                     Err(e) => {
                         println!("❌ Database error while validating model ID: {}", e);
@@ -195,11 +197,17 @@ impl WsSession {
                             message: "Failed to validate model ID".to_string(),
                         };
                         let _ = tx.send(error_msg);
-                        return;
+                        None
                     }
                 }
             }
-            .into_actor(self),
+            .into_actor(self)
+            .map(|matching_id_opt, act, _ctx| {
+                if let Some(matching_id) = matching_id_opt {
+                    act.matching_id = Some(matching_id);
+                    println!("✅ Updated self.matching_id to {}", matching_id);
+                }
+            }),
         );
     }
 
@@ -269,7 +277,7 @@ impl WsSession {
                                     ),
                                 };
                                 let _ = tx.send(error_msg);
-                                return;
+                                return None;
                             }
 
                             // モデルを使用済みにマーク
@@ -282,7 +290,7 @@ impl WsSession {
                                     message: "Failed to process model selection".to_string(),
                                 };
                                 let _ = tx.send(error_msg);
-                                return;
+                                return None;
                             }
 
                             println!(
@@ -300,7 +308,7 @@ impl WsSession {
                                 ),
                             };
                             let _ = tx.send(error_msg);
-                            return;
+                            return None;
                         }
                         Err(e) => {
                             println!("❌ Database error while validating model ID: {}", e);
@@ -308,7 +316,7 @@ impl WsSession {
                                 message: "Failed to validate model ID".to_string(),
                             };
                             let _ = tx.send(error_msg);
-                            return;
+                            return None;
                         }
                     };
 
@@ -321,7 +329,7 @@ impl WsSession {
                             message: "Matching session not found".to_string(),
                         };
                         let _ = tx.send(error_msg);
-                        return;
+                        return None;
                     }
                 };
 
@@ -335,7 +343,7 @@ impl WsSession {
                         message: "This matching session is not available".to_string(),
                     };
                     let _ = tx.send(error_msg);
-                    return;
+                    return None;
                 }
 
                 // 同じプレイヤーIDチェック
@@ -345,7 +353,7 @@ impl WsSession {
                         message: "Cannot join your own matching session".to_string(),
                     };
                     let _ = tx.send(error_msg);
-                    return;
+                    return None;
                 }
 
                 // プレイヤーAのモデルIDを取得
@@ -413,8 +421,16 @@ impl WsSession {
                         let _ = sender_b.send(msg);
                     }
                 }
+
+                Some(matching_id)
             }
-            .into_actor(self),
+            .into_actor(self)
+            .map(|matching_id_opt, act, _ctx| {
+                if let Some(matching_id) = matching_id_opt {
+                    act.matching_id = Some(matching_id);
+                    println!("✅ Updated self.matching_id to {}", matching_id);
+                }
+            }),
         );
     }
 
