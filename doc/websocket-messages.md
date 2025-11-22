@@ -92,7 +92,15 @@ wscat -c "ws://localhost:8080/ws?matching_id=<MATCHING_ID>"
 #### 正面攻撃
 
 ```json
-{"type":"Input","data":{"action":{"Attack":{"target_position":{"x":0,"y":0,"z":10}}}}}
+{"type":"Input","data":{"action":{"Attack":{"attack_type":"Normal","position":{"x":0,"y":0,"z":10},"direction":{"x":0,"y":0,"z":1}}}}}
+```
+
+### 7. 状態更新
+
+ゲーム中に自分の位置・回転を更新した時にサーバーに送信:
+
+```json
+{"type":"StateUpdate","data":{"position":{"x":5.0,"y":0.0,"z":3.0},"rotation":{"x":0.0,"y":45.0,"z":0.0}}}
 ```
 
 ---
@@ -229,7 +237,39 @@ wscat -c "ws://localhost:8080/ws?matching_id=<MATCHING_ID>"
 }
 ```
 
-### 7. GameEnd
+### 7. OpponentAttacked
+
+相手の攻撃通知
+
+```json
+{
+  "type": "OpponentAttacked",
+  "data": {
+    "attacker_id": "player_b",
+    "attack_type": "Normal",
+    "position": {"x": 5.0, "y": 0.0, "z": 3.0},
+    "direction": {"x": 0.0, "y": 0.0, "z": 1.0},
+    "timestamp": "2025-11-22T14:32:00Z"
+  }
+}
+```
+
+### 8. MatchingSuccess
+
+マッチング成功通知(レガシー、現在は`MatchingEstablished`を使用)
+
+```json
+{
+  "type": "MatchingSuccess",
+  "data": {
+    "matching_id": "550e8400-e29b-41d4-a716-446655440000",
+    "opponent_id": "player_b",
+    "timestamp": "2025-11-22T14:31:00Z"
+  }
+}
+```
+
+### 9. GameEnd
 
 ゲーム終了・結果通知
 
@@ -251,7 +291,7 @@ wscat -c "ws://localhost:8080/ws?matching_id=<MATCHING_ID>"
 }
 ```
 
-### 8. Error
+### 10. Error
 
 エラー通知
 
