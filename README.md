@@ -37,7 +37,7 @@ WebSocketによる60Hzのゲーム状態配信とREST APIによるマッチン�
 
 ### 概要
 
-- **トリガー**: `release`ブランチが`main`にマージされたとき
+- **トリガー**: `main`ブランチにpushされたとき（マージ含む）
 - **デプロイ方法**: GitHub Actions + `tsh scp`
 - **デプロイ先**: `ct108` (Teleport経由)
 
@@ -72,13 +72,9 @@ git checkout -b feature/new-feature
 # ... 開発作業 ...
 git commit -m "feat: add new feature"
 
-# releaseブランチにマージ
-git checkout release
-git merge feature/new-feature
-
 # mainにマージ → デプロイ自動実行
 git checkout main
-git merge release
+git merge feature/new-feature
 git push origin main
 ```
 
