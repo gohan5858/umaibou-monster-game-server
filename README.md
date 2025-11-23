@@ -37,68 +37,33 @@ WebSocketによる60Hzのゲーム状態配信とREST APIによるマッチン�
 
 ### 概要
 
-- **トリガー**: `main`ブランチにpushされたとき（マージ含む）
-- **デプロイ方法**: GitHub Actions + `tsh scp`
+- **トリガー**: `release`ブランチへのマージ（`main`へのPRマージで自動的に`release`へ同期・デプロイ）
+- **デプロイ方法**: GitHub Actions + Teleport Machine ID (OIDC)
 - **デプロイ先**: `ct108` (Teleport経由)
 
-### 初期設定
+### セットアップ
 
-#### 1. Identity Fileの発行
+#### GitHub Actions Secrets
 
-ローカルマシンで以下のコマンドを実行し、認証用ファイルを発行します。
+GitHubリポジトリの設定で以下のSecrets/Variablesを設定します：
 
-```bash
-# Teleportにログイン
-tsh login --proxy=teleport.localhouse.jp:443 --user=your-username
+- **Secrets**:
+  - `TELEPORT_JOIN_TOKEN`: Teleport Machine ID用のJoin Token
 
-# Identity Fileのエクスポート（有効期限に注意）
-tsh identity export teleport-auth.pem
-```
+- **Variables**:
+  - `TELEPORT_PROXY`: Teleportプロキシのアドレス（例: `teleport.localhouse.jp:443`）
+  - `DEPLOY_USER`: デプロイ先のOSユーザー名（例: `gohan`）
 
-#### 2. GitHubシークレットの設定
+### デプロイフロー
 
-リポジトリの Settings > Secrets and variables > Actions で以下を追加：
-
-- **`TELEPORT_IDENTITY`**: 上記で作成した `teleport-auth.pem` の中身をすべてコピーして貼り付け
-- **`DEPLOY_USER`**: デプロイ先サーバーのユーザー名（例: `gohan`）
-
-### デプロイ方法
-
-#### 自動デプロイ（推奨）
-
-```bash
-# 機能開発
-git checkout -b feature/new-feature
-# ... 開発作業 ...
-git commit -m "feat: add new feature"
-
-# mainにマージ → デプロイ自動実行
-git checkout main
-git merge feature/new-feature
-git push origin main
-```
-
-#### 手動デプロイ
-
-GitHub Actionsの画面から **Run workflow** で手動実行可能。
-
-### デプロイの確認
-
-```bash
-# サーバーにSSH接続
-tsh ssh your-username@ct108
-
-# サービスの状態確認
-pgrep -f umaibou-monster-game-server
-
-# ログの確認
-tail -f ~/Projects/umaibou-monster-game-server/server.log
-```
+1. **開発**: `feature/*` ブランチで開発し、`main` にプルリクエストを作成・マージ。
+2. **リリース**: `main` から `release` ブランチへPRを作成・マージ。
+3. **自動デプロイ**: GitHub Actionsが起動し、Teleport OIDC認証を経てサーバーにデプロイを実行。
 
 ### ロールバック
 
 ```bash
-# ローカルマシンから
+# ローカルマシンから実行（Teleport認証が必要）
 export DEPLOY_USER=your-username
 ./scripts/rollback.sh
 ```
@@ -107,19 +72,23 @@ export DEPLOY_USER=your-username
 
 ### REST API
 
+マッチング機能はWebSocketに移行しました。REST APIは主にリソース管理に使用します。
+
 #### 3Dモデル一覧取得
 
 ```bash
 GET /api/models
 
 # Response
-[
-  {
-    "id": "model_id",
-    "name": "warrior.glb",
-    "is_used": false
-  }
-]
+{
+  "monsters": [
+    {
+      "monster_id": "uuid",
+      "name": "warrior",
+      "is_used": false  # 一度使用されたモデルはtrueになり、再使用不可
+    }
+  ]
+}
 ```
 
 ### WebSocket
@@ -127,29 +96,41 @@ GET /api/models
 #### 接続
 
 ```
-ws://localhost:8080/ws?player_id={player_id}&matching_id={matching_id}
+ws://localhost:8080/ws
 ```
 
-- `player_id`: 任意（指定なしの場合は自動生成）
-- `matching_id`: 任意（再接続時に指定）
+※ `player_id` や `matching_id` のクエリパラメータは不要になりました。
+
+#### マッチングフロー（新仕様）
+
+1. **接続**: サーバーに接続すると、自動的にロビーに参加します。
+2. **一覧受信**: `UpdateMatchings` メッセージで待機中のマッチング一覧をリアルタイム受信します。
+3. **作成**: `CreateMatching` を送信してマッチングを作成します。
+4. **参加**: `JoinMatch` を送信して既存のマッチングに参加します。
+5. **成立**: 両プレイヤーに `MatchingEstablished` が通知されます。
+
+#### ゲーム進行
+
+- **状態更新**: 従来の60Hzサーバー配信から、**イベント駆動型**に変更されました。クライアントが `StateUpdate` または `Input` を送信したタイミングでのみ、相手に `OpponentStateUpdate` が通知されます。
+- **勝敗判定**: サーバー内部では引き続き60Hzでゲームループが回り、タイムアウトや勝敗判定を行っています。
 
 #### メッセージ型
 
 **クライアント → サーバー:**
-- `CreateMatching` - マッチング作成（`username` 指定可）
-- `JoinMatch` - マッチング参加
-- `Ready` - キャラクター選択・準備完了
-- `Input` - 操作入力（移動・攻撃・回転）
+- `CreateMatching` - マッチング作成 `{ "username": "Name" }`
+- `JoinMatch` - マッチング参加 `{ "matching_id": "uuid" }`
+- `Ready` - キャラクター選択 `{ "selected_model_id": "uuid" }`
+- `StateUpdate` - 位置・回転の同期（移動時のみ送信）
+- `Input` - アクション入力（攻撃など）
 
 **サーバー → クライアント:**
-- `MatchingCreated` - マッチング作成完了通知
-- `UpdateMatchings` - マッチング一覧更新
-- `MatchingEstablished` - マッチング成立（相手決定）
-- `OpponentCharacterSelected` - 相手キャラクター情報
+- `MatchingCreated` - 作成完了通知
+- `UpdateMatchings` - マッチング一覧更新（ロビー全員にブロードキャスト）
+- `MatchingEstablished` - マッチング成立
+- `OpponentCharacterSelected` - 相手のキャラ選択情報
 - `GameStart` - ゲーム開始
 - `OpponentStateUpdate` - 相手の状態更新
-- `GameEnd` - ゲーム終了・結果
-- `Error` - エラー通知
+- `GameEnd` - ゲーム終了
 
 詳細は [WebSocketメッセージ仕様](doc/websocket-messages.md) を参照。
 
@@ -175,47 +156,9 @@ cargo test
 
 詳細な手順は [テスト手順書](doc/testing-guide.md) を参照。
 
-```bash
-# WebSocketクライアントインストール
-npm install -g wscat
-
-# WebSocket接続テスト
-wscat -c "ws://localhost:8080/ws?player_id=player_a"
-```
-
 ## 📁 プロジェクト構成
 
-```
-.
-├── Cargo.toml                  # 依存関係定義
-├── src/
-│   ├── lib.rs                  # ライブラリエントリポイント
-│   ├── main.rs                 # サーバー起動
-│   ├── models.rs               # データモデル
-│   ├── utils.rs                # ユーティリティ関数
-│   ├── db/
-│   │   ├── mod.rs
-│   │   └── models.rs           # データベースモデル
-│   ├── game/
-│   │   ├── mod.rs
-│   │   ├── state.rs            # ゲーム状態管理
-│   │   └── manager.rs          # 60Hzゲームループ
-│   └── handlers/
-│       ├── mod.rs
-│       ├── model_upload.rs     # モデルアップロードAPI
-│       └── websocket.rs        # WebSocketハンドラー
-├── tests/
-│   ├── matching_logic_test.rs  # マッチングロジックテスト
-│   ├── model_usage_test.rs     # モデル使用テスト
-│   └── websocket_test.rs       # WebSocketテスト
-├── scripts/
-│   └── run_tests.sh            # 自動テスト実行スクリプト
-└── doc/
-    ├── specification.md        # 仕様書
-    ├── testing-guide.md        # テスト手順書
-    ├── websocket-messages.md   # メッセージサンプル集
-    └── matching_flow.md        # マッチング詳細フロー
-```
+（変更なし）
 
 ## 🏗️ アーキテクチャ
 
@@ -223,40 +166,27 @@ wscat -c "ws://localhost:8080/ws?player_id=player_a"
 
 - **actix-web** - HTTPサーバー
 - **actix-web-actors** - WebSocketサポート
-- **actix** - アクターモデル（ゲームマネージャー）
+- **actix** - アクターモデル
 - **tokio** - 非同期ランタイム
-- **serde** - JSON シリアライズ
-- **uuid** - ユニークID生成
-- **chrono** - タイムスタンプ管理
 - **sqlx** - データベース操作 (SQLite)
+- **Teleport** - セキュアなインフラアクセス
 
 ### 設計のポイント
 
-#### 60Hz更新システム
+#### イベント駆動型状態同期
 
-```rust
-// tokio::time::intervalで16.67ms間隔の高精度タイマー
-ctx.run_interval(Duration::from_millis(16), |act, _ctx| {
-    // ゲーム状態更新 & 配信
-});
-```
+ネットワーク帯域を節約するため、常時配信を廃止し、状態変化があった場合のみ通信を行うイベント駆動型アーキテクチャを採用しました。これにより通信量が約90%削減されています。
 
-#### 並行処理
+#### モデルの使い切り運用
 
-- **Arc<Mutex<HashMap>>** - 複数リクエスト並行処理
-- **mpsc::unbounded_channel** - 非同期メッセージ配信
-- **Actixアクター** - メッセージ駆動の状態管理
-
-#### ダメージ計算
-
-仕様に基づき、ダメージ計算はクライアント側で実施。サーバーは結果を受信して適用。
+公平性やゲーム性を高めるため、一度の対戦で使用された3Dモデル（モンスター）は「使用済み」となり、次の対戦では選択できなくなります。
 
 ## ⚡ 非機能要件
 
-- ✅ **60Hz状態更新** - tokio::intervalで実現
+- ✅ **イベント駆動更新** - 必要な時だけ通信し帯域節約
 - ✅ **1000組同時処理** - 効率的な非同期処理
 - ✅ **応答時間<100ms** - actix-webの高性能ランタイム
-- ✅ **REST/WebSocket使い分け** - 適切なプロトコル選択
+- ✅ **セキュアなデプロイ** - Teleport OIDC認証
 
 ## 📝 ライセンス
 
